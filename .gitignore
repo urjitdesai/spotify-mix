@@ -1,3 +1,4 @@
 backend/node_modules
 backend/config.js
 backend-python/config.json
+.vscode
