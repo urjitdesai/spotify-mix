@@ -2,9 +2,9 @@ from flask import Flask, redirect, request, session, url_for, jsonify
 import requests
 import json
 
-with open('./config.json','r')as file:
-    spotify_config=json.load(file)
-    print("spotify config=",spotify_config)
+with open('./config.json', 'r')as file:
+    spotify_config = json.load(file)
+    print("spotify config=", spotify_config)
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'supersecretkey'
@@ -16,6 +16,7 @@ app.config['SPOTIFY_REDIRECT_URI'] = spotify_config['SPOTIFY_CREDENTIALS']['REDI
 AUTH_URL = 'https://accounts.spotify.com/authorize'
 TOKEN_URL = 'https://accounts.spotify.com/api/token'
 BASE_URL = 'https://api.spotify.com/v1/'
+
 
 @app.route('/login')
 def login():
@@ -41,13 +42,14 @@ def callback():
     }
     post_resp = requests.post(TOKEN_URL, data=code_payload)
     response_data = post_resp.json()
-    print("\naccess token=",response_data['access_token'])
+    print("\naccess token=", response_data['access_token'])
     session['access_token'] = response_data["access_token"]
     session['refresh_token'] = response_data["refresh_token"]
     session['token_type'] = response_data["token_type"]
     session['expires_in'] = response_data["expires_in"]
-    
+
     return redirect(url_for('get_playlists'))
+
 
 @app.route('/playlists')
 def get_playlists():
@@ -55,42 +57,52 @@ def get_playlists():
     resp = requests.get(BASE_URL + "me/playlists", headers=headers)
     return jsonify(resp.json())
 
+
 @app.route('/tracks', methods=['POST'])
 def get_tracks():
     # playlist_ids = request.json.get('playlists', [])
     print('req.get_json=', request.get_json())
-    playlist_ids= request.get_json()['playlists']
-    
+    playlist_ids = request.get_json()['playlists']
+
     all_tracks = []
 
-    if(request.headers.get('Authorization')):
-        session['access_token']= request.headers.get('Authorization')
-    
+    if (request.headers.get('Authorization')):
+        session['access_token'] = request.headers.get('Authorization')
+
     headers = {"Authorization": f"Bearer {session['access_token']}"}
 
-    tracksMap= {}
+    tracksMap = {}
     # {
     #   <trackid>: { track: <trackObj>, count: <integer>}
-    #   
     # }
     for playlist_id in playlist_ids:
-        resp = requests.get(BASE_URL + f"playlists/{playlist_id}/tracks", headers=headers)
+        resp = requests.get(
+            BASE_URL + f"playlists/{playlist_id}/tracks", headers=headers)
         playlistTrackObjects = resp.json().get('items', [])
-        all_tracks.extend([track['track'] for track in playlistTrackObjects if track['track']])
+        all_tracks.extend([track['track']
+                          for track in playlistTrackObjects if track['track']])
 
         for track in playlistTrackObjects:
-            if(track['track']['id'] in tracksMap):
-                tracksMap[track['track']['id']]={
+            if (track['track']['id'] in tracksMap):
+                tracksMap[track['track']['id']] = {
                     'track': track['track'],
-                    'count': tracksMap[track['track']['id']]['count']+1 
+                    'count': tracksMap[track['track']['id']]['count']+1
                 }
             else:
-                tracksMap[track['track']['id']]={
+                tracksMap[track['track']['id']] = {
                     'track': track['track'],
-                    'count': 1 
+                    'count': 1
                 }
-    
+
     return jsonify(tracksMap)
+
+
+@app.route('/getLongUrl',  methods=['POST'])
+def get_long_url():
+    short_url = request.get_json()['shortUrl']
+    r = requests.head(short_url, allow_redirects=True)
+    print("Long url= ", r.url)
+    return r.url
 
 
 if __name__ == '__main__':
