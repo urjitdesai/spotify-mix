@@ -1,4 +1,5 @@
 from flask import Flask, redirect, request, session, url_for, jsonify
+from flask_cors import CORS
 import requests
 import json
 
@@ -7,6 +8,7 @@ with open('./config.json', 'r')as file:
     print("spotify config=", spotify_config)
 
 app = Flask(__name__)
+CORS(app)
 app.config['SECRET_KEY'] = 'supersecretkey'
 app.config['SESSION_TYPE'] = 'filesystem'
 app.config['SPOTIFY_CLIENT_ID'] = spotify_config['SPOTIFY_CREDENTIALS']['CLIENT_ID']
@@ -17,16 +19,19 @@ AUTH_URL = 'https://accounts.spotify.com/authorize'
 TOKEN_URL = 'https://accounts.spotify.com/api/token'
 BASE_URL = 'https://api.spotify.com/v1/'
 
+ACCESS_TOKEN = None
+
 
 @app.route('/login')
 def login():
     auth_query_parameters = {
         "response_type": "code",
         "redirect_uri": app.config['SPOTIFY_REDIRECT_URI'],
-        "scope": "user-library-read playlist-read-private playlist-modify-public",
+        "scope": "user-library-read playlist-read-private playlist-modify-public playlist-modify-private",
         "client_id": app.config['SPOTIFY_CLIENT_ID']
     }
     resp = requests.get(AUTH_URL, params=auth_query_parameters)
+    print("resp=", resp.url)
     return redirect(resp.url)
 
 
@@ -43,6 +48,7 @@ def callback():
     post_resp = requests.post(TOKEN_URL, data=code_payload)
     response_data = post_resp.json()
     print("\naccess token=", response_data['access_token'])
+    ACCESS_TOKEN = response_data['access_token']
     session['access_token'] = response_data["access_token"]
     session['refresh_token'] = response_data["refresh_token"]
     session['token_type'] = response_data["token_type"]
@@ -56,6 +62,21 @@ def get_playlists():
     headers = {"Authorization": f"Bearer {session['access_token']}"}
     resp = requests.get(BASE_URL + "me/playlists", headers=headers)
     return jsonify(resp.json())
+
+
+@app.route('/auth/token')
+def get_access_token():
+    print('ACCESS_TOKEN=', ACCESS_TOKEN)
+    if (ACCESS_TOKEN):
+        print('ACCESS_TOKEN=', ACCESS_TOKEN)
+        return {
+            "status": 'success',
+            "access_token": ACCESS_TOKEN,
+        }
+    else:
+        return {
+            "status": 'fail',
+        }
 
 
 @app.route('/tracks', methods=['POST'])
@@ -78,10 +99,11 @@ def get_tracks():
     for playlist_id in playlist_ids:
         resp = requests.get(
             BASE_URL + f"playlists/{playlist_id}/tracks", headers=headers)
+        print('resp.json()=', resp.json())
         playlistTrackObjects = resp.json().get('items', [])
         all_tracks.extend([track['track']
                           for track in playlistTrackObjects if track['track']])
-
+        print('all_tracks=', len(all_tracks))
         for track in playlistTrackObjects:
             if (track['track']['id'] in tracksMap):
                 tracksMap[track['track']['id']] = {
@@ -103,6 +125,17 @@ def get_long_url():
     r = requests.head(short_url, allow_redirects=True)
     print("Long url= ", r.url)
     return r.url
+
+
+@app.route('/create-playlist', methods=['POST'])
+def create_playlist():
+    trackIds = request.get_json()['trackIds']
+    headers = {"Authorization": f"Bearer {session['access_token']}"}
+    currentUserResponse = requests.get(
+        BASE_URL+'me', headers=headers)
+    currentUser = currentUserResponse.json()
+    print("currentUser=", currentUser)
+    return jsonify(currentUser)
 
 
 if __name__ == '__main__':
